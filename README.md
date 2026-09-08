@@ -23,7 +23,7 @@ The repository currently contains:
 ### Backend Setup
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 
 # Run the API
 uvicorn backend.app.main:app --reload
@@ -43,10 +43,11 @@ pytest tests/
 ```
 forgemind/
 ├── backend/           # FastAPI backend (current phase)
+│   └── requirements.txt # Backend dependencies
 ├── tests/             # Test suite
 ├── project_6_rul_prediction/      # [Historical] LSTM RUL prediction
 ├── project_11_manufacturing_output/ # [Historical] Manufacturing forecasting
-├── requirements.txt   # Backend dependencies
+├── requirements.txt   # Historical ML project dependencies
 ├── README.md          # This file
 └── .gitignore
 ```
