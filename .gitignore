@@ -54,3 +54,7 @@ env/
 data/
 models/
 outputs/
+
+# ForgeMind SQLAlchemy domain models
+!backend/app/models/
+!backend/app/models/*.py
