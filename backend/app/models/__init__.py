@@ -1,0 +1,1 @@
+"""ForgeMind SQLAlchemy domain models."""

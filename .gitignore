@@ -53,4 +53,6 @@ env/
 *.parquet
 data/
 models/
+!backend/app/models/
+!backend/app/models/*.py
 outputs/
