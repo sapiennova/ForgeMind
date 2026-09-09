@@ -25,6 +25,9 @@ The repository currently contains:
 # Install dependencies
 pip install -r backend/requirements.txt
 
+# Configure the database connection (for future database-backed endpoints)
+export DATABASE_URL="postgresql+psycopg2://<user>:<password>@<host>/<database>"
+
 # Run the API
 uvicorn backend.app.main:app --reload
 
