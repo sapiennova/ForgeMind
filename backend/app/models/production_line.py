@@ -1,4 +1,4 @@
-"""Plant domain model."""
+"""Production line domain model."""
 
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
@@ -14,15 +14,15 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class Plant(Base):
-    """Industrial plant owned by an organization."""
+class ProductionLine(Base):
+    """Production line owned by a plant."""
 
-    __tablename__ = "plants"
+    __tablename__ = "production_lines"
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
-    organization_id: Mapped[UUID] = mapped_column(
+    plant_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("organizations.id"),
+        ForeignKey("plants.id"),
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
@@ -32,14 +32,11 @@ class Plant(Base):
         default=_utc_now,
     )
 
-    organization: Mapped["Organization"] = relationship("Organization", back_populates="plants")
-    production_lines: Mapped[list["ProductionLine"]] = relationship(
-        "ProductionLine", back_populates="plant"
-    )
+    plant: Mapped["Plant"] = relationship("Plant", back_populates="production_lines")
 
-    def __init__(self, organization_id: UUID, name: str) -> None:
-        """Create a plant with application-generated metadata."""
+    def __init__(self, plant_id: UUID, name: str) -> None:
+        """Create a production line with application-generated metadata."""
         self.id = uuid4()
-        self.organization_id = organization_id
+        self.plant_id = plant_id
         self.name = name
         self.created_at = _utc_now()
