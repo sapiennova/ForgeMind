@@ -4,8 +4,11 @@ from datetime import timezone
 from uuid import UUID
 
 from sqlalchemy import create_engine, inspect
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from backend.app.models.base import Base
+from backend.app.models.machine import Machine
 from backend.app.models.organization import Organization
 from backend.app.models.plant import Plant
 from backend.app.models.production_line import ProductionLine
@@ -57,9 +60,12 @@ def test_organization_table_can_be_created_with_sqlite():
     """Organization schema is compatible with SQLite for isolated tests."""
     engine = create_engine("sqlite+pysqlite:///:memory:")
 
-    Base.metadata.create_all(engine)
+    try:
+        Base.metadata.create_all(engine)
 
-    assert "organizations" in inspect(engine).get_table_names()
+        assert "organizations" in inspect(engine).get_table_names()
+    finally:
+        engine.dispose()
 
 
 def test_plant_uses_shared_declarative_base():
@@ -220,13 +226,129 @@ def test_plant_can_contain_multiple_production_lines():
     assert second.plant is plant
 
 
-def test_organization_plant_and_production_line_tables_can_be_created_with_sqlite():
-    """Organization, Plant, and ProductionLine schemas are compatible with SQLite."""
+def test_all_domain_tables_can_be_created_with_sqlite():
+    """The complete domain hierarchy is compatible with SQLite."""
     engine = create_engine("sqlite+pysqlite:///:memory:")
 
-    Base.metadata.create_all(engine)
+    try:
+        Base.metadata.create_all(engine)
 
-    table_names = inspect(engine).get_table_names()
-    assert "organizations" in table_names
-    assert "plants" in table_names
-    assert "production_lines" in table_names
+        table_names = inspect(engine).get_table_names()
+        assert "organizations" in table_names
+        assert "plants" in table_names
+        assert "production_lines" in table_names
+        assert "machines" in table_names
+    finally:
+        engine.dispose()
+
+
+def _production_line() -> ProductionLine:
+    """Create a production line for Machine model tests."""
+    organization = Organization(name="Acme Manufacturing")
+    plant = Plant(organization_id=organization.id, name="North Plant")
+    return ProductionLine(plant_id=plant.id, name="Assembly Line 1")
+
+
+def test_machine_uses_shared_declarative_base():
+    """Machine inherits from ForgeMind's shared SQLAlchemy base."""
+    assert issubclass(Machine, Base)
+
+
+def test_machine_maps_to_machines_table():
+    """Machine is mapped to the expected database table."""
+    assert Machine.__tablename__ == "machines"
+    assert Machine.__table__.name == "machines"
+
+
+def test_new_machine_receives_uuid_compatible_id():
+    """Machine IDs are generated in application code as UUID values."""
+    production_line = _production_line()
+    machine = Machine(production_line.id, "CNC-001", "CNC Mill 1", "CNC")
+
+    assert isinstance(machine.id, UUID)
+
+
+def test_new_machines_receive_distinct_ids():
+    """Each Machine instance receives a unique identifier."""
+    production_line = _production_line()
+    first = Machine(production_line.id, "CNC-001", "CNC Mill 1", "CNC")
+    second = Machine(production_line.id, "PRESS-042", "Press 42", "PRESS")
+
+    assert first.id != second.id
+
+
+def test_machine_stores_name_asset_id_and_machine_type():
+    """Machine preserves its required identity and classification values."""
+    machine = Machine(_production_line().id, "ROBOT-17", "Welding Robot", "ROBOT")
+
+    assert machine.name == "Welding Robot"
+    assert machine.asset_id == "ROBOT-17"
+    assert machine.machine_type == "ROBOT"
+
+
+def test_machine_asset_id_is_unique_in_sqlite():
+    """The database rejects duplicate stable industrial asset identifiers."""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+
+    try:
+        Base.metadata.create_all(engine)
+        organization = Organization(name="Acme Manufacturing")
+        plant = Plant(organization_id=organization.id, name="North Plant")
+        production_line = ProductionLine(plant_id=plant.id, name="Assembly Line 1")
+        with Session(engine) as session:
+            session.add_all([organization, plant, production_line])
+            session.add(Machine(production_line.id, "CNC-001", "CNC Mill 1", "CNC"))
+            session.commit()
+
+            session.add(Machine(production_line.id, "CNC-001", "CNC Mill 2", "CNC"))
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+            else:
+                raise AssertionError("SQLite accepted duplicate machine asset_id values")
+    finally:
+        engine.dispose()
+
+
+def test_new_machine_defaults_to_active_with_timezone_aware_created_at():
+    """Machines default to active and receive automatic UTC timestamps."""
+    machine = Machine(_production_line().id, "CONVEYOR-01", "Main Conveyor", "CONVEYOR")
+
+    assert machine.status == "active"
+    assert machine.created_at is not None
+    assert machine.created_at.tzinfo is not None
+    assert machine.created_at.utcoffset() == timezone.utc.utcoffset(machine.created_at)
+
+
+def test_machine_has_non_null_foreign_key_to_production_lines():
+    """Machine ownership is stored as a required production line foreign key."""
+    foreign_keys = list(Machine.__table__.foreign_keys)
+
+    assert len(foreign_keys) == 1
+    assert foreign_keys[0].target_fullname == "production_lines.id"
+    assert Machine.__table__.c.production_line_id.nullable is False
+
+
+def test_production_line_to_machine_relationship_works_in_both_directions():
+    """Production lines expose machines and machines expose their owner."""
+    production_line = _production_line()
+    machine = Machine(production_line.id, "CNC-001", "CNC Mill 1", "CNC")
+
+    production_line.machines.append(machine)
+
+    assert production_line.machines == [machine]
+    assert machine.production_line is production_line
+
+
+def test_production_line_can_contain_multiple_machines():
+    """One production line can be associated with multiple machines."""
+    production_line = _production_line()
+    first = Machine(production_line.id, "CNC-001", "CNC Mill 1", "CNC")
+    second = Machine(production_line.id, "PRESS-042", "Press 42", "PRESS")
+
+    production_line.machines.extend([first, second])
+
+    assert production_line.machines == [first, second]
+    assert first.production_line is production_line
+    assert second.production_line is production_line

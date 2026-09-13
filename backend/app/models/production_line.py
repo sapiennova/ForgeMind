@@ -33,6 +33,7 @@ class ProductionLine(Base):
     )
 
     plant: Mapped["Plant"] = relationship("Plant", back_populates="production_lines")
+    machines: Mapped[list["Machine"]] = relationship("Machine", back_populates="production_line")
 
     def __init__(self, plant_id: UUID, name: str) -> None:
         """Create a production line with application-generated metadata."""
