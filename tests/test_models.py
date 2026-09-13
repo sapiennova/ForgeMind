@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, inspect
 from backend.app.models.base import Base
 from backend.app.models.organization import Organization
 from backend.app.models.plant import Plant
+from backend.app.models.production_line import ProductionLine
 
 
 def test_organization_uses_shared_declarative_base():
@@ -140,8 +141,87 @@ def test_organization_can_contain_multiple_plants():
     assert second.organization is organization
 
 
-def test_organization_and_plant_tables_can_be_created_with_sqlite():
-    """Organization and Plant schemas are compatible with SQLite."""
+def test_production_line_uses_shared_declarative_base():
+    """ProductionLine inherits from ForgeMind's shared SQLAlchemy base."""
+    assert issubclass(ProductionLine, Base)
+
+
+def test_production_line_maps_to_production_lines_table():
+    """ProductionLine is mapped to the expected database table."""
+    assert ProductionLine.__tablename__ == "production_lines"
+    assert ProductionLine.__table__.name == "production_lines"
+
+
+def test_new_production_line_receives_uuid_compatible_id():
+    """Production line IDs are generated in application code as UUID values."""
+    plant = Plant(organization_id=Organization(name="Acme Manufacturing").id, name="North Plant")
+    production_line = ProductionLine(plant_id=plant.id, name="Assembly Line 1")
+
+    assert isinstance(production_line.id, UUID)
+
+
+def test_new_production_lines_receive_distinct_ids():
+    """Each ProductionLine instance receives a unique identifier."""
+    plant = Plant(organization_id=Organization(name="Acme Manufacturing").id, name="North Plant")
+    first = ProductionLine(plant_id=plant.id, name="Assembly Line 1")
+    second = ProductionLine(plant_id=plant.id, name="Assembly Line 2")
+
+    assert first.id != second.id
+
+
+def test_production_line_stores_name():
+    """ProductionLine preserves its required name value."""
+    plant = Plant(organization_id=Organization(name="Acme Manufacturing").id, name="North Plant")
+    production_line = ProductionLine(plant_id=plant.id, name="Assembly Line 1")
+
+    assert production_line.name == "Assembly Line 1"
+
+
+def test_new_production_line_receives_timezone_aware_created_at():
+    """Production line timestamps are created automatically in UTC."""
+    plant = Plant(organization_id=Organization(name="Acme Manufacturing").id, name="North Plant")
+    production_line = ProductionLine(plant_id=plant.id, name="Assembly Line 1")
+
+    assert production_line.created_at is not None
+    assert production_line.created_at.tzinfo is not None
+    assert production_line.created_at.utcoffset() == timezone.utc.utcoffset(production_line.created_at)
+
+
+def test_production_line_has_foreign_key_to_plants():
+    """Production line ownership is stored as a foreign key to a plant."""
+    foreign_keys = list(ProductionLine.__table__.foreign_keys)
+
+    assert len(foreign_keys) == 1
+    assert foreign_keys[0].target_fullname == "plants.id"
+    assert ProductionLine.__table__.c.plant_id.nullable is False
+
+
+def test_plant_to_production_line_relationship_works_in_both_directions():
+    """Plants expose production lines and production lines expose their owner."""
+    plant = Plant(organization_id=Organization(name="Acme Manufacturing").id, name="North Plant")
+    production_line = ProductionLine(plant_id=plant.id, name="Assembly Line 1")
+
+    plant.production_lines.append(production_line)
+
+    assert plant.production_lines == [production_line]
+    assert production_line.plant is plant
+
+
+def test_plant_can_contain_multiple_production_lines():
+    """One plant can be associated with multiple production lines."""
+    plant = Plant(organization_id=Organization(name="Acme Manufacturing").id, name="North Plant")
+    first = ProductionLine(plant_id=plant.id, name="Assembly Line 1")
+    second = ProductionLine(plant_id=plant.id, name="Assembly Line 2")
+
+    plant.production_lines.extend([first, second])
+
+    assert plant.production_lines == [first, second]
+    assert first.plant is plant
+    assert second.plant is plant
+
+
+def test_organization_plant_and_production_line_tables_can_be_created_with_sqlite():
+    """Organization, Plant, and ProductionLine schemas are compatible with SQLite."""
     engine = create_engine("sqlite+pysqlite:///:memory:")
 
     Base.metadata.create_all(engine)
@@ -149,3 +229,4 @@ def test_organization_and_plant_tables_can_be_created_with_sqlite():
     table_names = inspect(engine).get_table_names()
     assert "organizations" in table_names
     assert "plants" in table_names
+    assert "production_lines" in table_names
