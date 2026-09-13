@@ -37,8 +37,11 @@ def test_engine_uses_configured_url_and_is_reused(database_module, monkeypatch):
 
     engine = database_module.get_engine()
 
-    assert str(engine.url) == database_url
-    assert database_module.get_engine() is engine
+    try:
+        assert str(engine.url) == database_url
+        assert database_module.get_engine() is engine
+    finally:
+        engine.dispose()
 
 
 def test_session_dependency_yields_sqlalchemy_session(database_module, monkeypatch):
@@ -52,3 +55,4 @@ def test_session_dependency_yields_sqlalchemy_session(database_module, monkeypat
     assert isinstance(database_module.get_engine(), Engine)
 
     dependency.close()
+    database_module.get_engine().dispose()
