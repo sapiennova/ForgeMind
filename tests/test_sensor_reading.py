@@ -106,6 +106,9 @@ def test_sensor_readings_persist_in_sqlite():
             machine = Machine(line.id, "CNC-001", "CNC Mill", "CNC")
             sensor = Sensor(machine.id, "TEMP-001", "Bearing Temperature", "temperature", "°C")
             reading = SensorReading(sensor_id=sensor.id, value=24.5)
+            # Keep the original UTC-aware application timestamp before SQLite
+            # and SQLAlchemy refresh it without timezone metadata on commit.
+            recorded_at_utc = reading.recorded_at
             session.add_all([organization, plant, line, machine, sensor, reading])
             session.commit()
 
@@ -115,7 +118,7 @@ def test_sensor_readings_persist_in_sqlite():
             assert stored.value == 24.5
             # SQLite drops timezone metadata for DateTime(timezone=True); the
             # model's application-side timestamp remains explicitly UTC-aware.
-            assert stored.recorded_at.replace(tzinfo=timezone.utc) == reading.recorded_at
+            assert stored.recorded_at.replace(tzinfo=timezone.utc) == recorded_at_utc
             assert stored.sensor.id == sensor.id
     finally:
         engine.dispose()
