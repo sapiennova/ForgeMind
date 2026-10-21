@@ -99,9 +99,6 @@ def test_sensor_readings_persist_in_sqlite():
 
     try:
         Base.metadata.create_all(engine)
-        sensor = _sensor()
-        reading = SensorReading(sensor_id=sensor.id, value=24.5)
-
         with Session(engine) as session:
             organization = Organization(name="Acme Manufacturing")
             plant = Plant(organization_id=organization.id, name="North Plant")
