@@ -2,7 +2,10 @@
 
 from fastapi import FastAPI
 
+from backend.app.routers.sensor_readings import router as sensor_readings_router
+
 app = FastAPI(title="ForgeMind API", version="0.1.0")
+app.include_router(sensor_readings_router)
 
 
 @app.get("/health")
