@@ -12,6 +12,7 @@ from backend.app.models.machine import Machine
 from backend.app.models.organization import Organization
 from backend.app.models.plant import Plant
 from backend.app.models.production_line import ProductionLine
+from backend.app.models.sensor import Sensor
 
 
 def test_organization_uses_shared_declarative_base():
@@ -352,3 +353,148 @@ def test_production_line_can_contain_multiple_machines():
     assert production_line.machines == [first, second]
     assert first.production_line is production_line
     assert second.production_line is production_line
+
+
+def _machine_for_sensor_tests() -> Machine:
+    """Create an unsaved machine for Sensor model tests."""
+    return Machine(_production_line().id, "CNC-SENSOR-TEST", "CNC Mill", "CNC")
+
+
+def test_sensor_uses_shared_declarative_base():
+    """Sensor inherits from ForgeMind's shared SQLAlchemy base."""
+    assert issubclass(Sensor, Base)
+
+
+def test_sensor_maps_to_sensors_table():
+    """Sensor is mapped to the expected database table."""
+    assert Sensor.__tablename__ == "sensors"
+    assert Sensor.__table__.name == "sensors"
+
+
+def test_new_sensor_receives_uuid_compatible_id():
+    """Sensor IDs are generated in application code as UUID values."""
+    sensor = Sensor(_machine_for_sensor_tests().id, "TEMP-001", "Bearing Temperature", "temperature", "°C")
+
+    assert isinstance(sensor.id, UUID)
+
+
+def test_new_sensors_receive_distinct_ids():
+    """Each Sensor instance receives a unique identifier."""
+    machine_id = _machine_for_sensor_tests().id
+    first = Sensor(machine_id, "TEMP-001", "Bearing Temperature", "temperature", "°C")
+    second = Sensor(machine_id, "VIB-001", "Bearing Vibration", "vibration", "mm/s")
+
+    assert first.id != second.id
+
+
+def test_sensor_stores_identity_and_measurement_metadata():
+    """Sensor preserves its identifier, name, type, and unit."""
+    sensor = Sensor(
+        _machine_for_sensor_tests().id,
+        "TEMP-001",
+        "Bearing Temperature",
+        "temperature",
+        "°C",
+    )
+
+    assert sensor.sensor_id == "TEMP-001"
+    assert sensor.name == "Bearing Temperature"
+    assert sensor.sensor_type == "temperature"
+    assert sensor.unit == "°C"
+
+
+def test_new_sensor_defaults_to_active_with_timezone_aware_created_at():
+    """Sensors default to active and receive automatic UTC timestamps."""
+    sensor = Sensor(
+        _machine_for_sensor_tests().id,
+        "TEMP-001",
+        "Bearing Temperature",
+        "temperature",
+        "°C",
+    )
+
+    assert sensor.status == "active"
+    assert sensor.created_at is not None
+    assert sensor.created_at.tzinfo is not None
+    assert sensor.created_at.utcoffset() == timezone.utc.utcoffset(sensor.created_at)
+
+
+def test_sensor_has_non_null_foreign_key_to_machines():
+    """Sensor ownership is stored as a required machine foreign key."""
+    foreign_keys = list(Sensor.__table__.foreign_keys)
+
+    assert len(foreign_keys) == 1
+    assert foreign_keys[0].target_fullname == "machines.id"
+    assert Sensor.__table__.c.machine_id.nullable is False
+
+
+def test_sensor_id_is_unique_in_sqlite():
+    """The database rejects duplicate stable sensor identifiers."""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+
+    try:
+        Base.metadata.create_all(engine)
+        organization = Organization(name="Acme Manufacturing")
+        plant = Plant(organization_id=organization.id, name="North Plant")
+        production_line = ProductionLine(plant_id=plant.id, name="Assembly Line 1")
+        machine = Machine(production_line.id, "CNC-001", "CNC Mill", "CNC")
+
+        with Session(engine) as session:
+            session.add_all([organization, plant, production_line, machine])
+            session.add(
+                Sensor(machine.id, "TEMP-001", "Bearing Temperature", "temperature", "°C")
+            )
+            session.commit()
+
+            session.add(
+                Sensor(machine.id, "TEMP-001", "Motor Temperature", "temperature", "°C")
+            )
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+            else:
+                raise AssertionError("SQLite accepted duplicate sensor_id values")
+    finally:
+        engine.dispose()
+
+
+def test_machine_to_sensor_relationship_works_in_both_directions():
+    """Machines expose their sensors and sensors expose their parent machine."""
+    machine = _machine_for_sensor_tests()
+    sensor = Sensor(machine.id, "TEMP-001", "Bearing Temperature", "temperature", "°C")
+
+    machine.sensors.append(sensor)
+
+    assert machine.sensors == [sensor]
+    assert sensor.machine is machine
+
+
+def test_machine_can_contain_multiple_sensors():
+    """One machine can be associated with multiple sensors."""
+    machine = _machine_for_sensor_tests()
+    temperature = Sensor(machine.id, "TEMP-001", "Bearing Temperature", "temperature", "°C")
+    vibration = Sensor(machine.id, "VIB-001", "Bearing Vibration", "vibration", "mm/s")
+
+    machine.sensors.extend([temperature, vibration])
+
+    assert machine.sensors == [temperature, vibration]
+    assert temperature.machine is machine
+    assert vibration.machine is machine
+
+
+def test_all_domain_tables_can_be_created_with_sqlite():
+    """The complete five-level domain hierarchy is compatible with SQLite."""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+
+    try:
+        Base.metadata.create_all(engine)
+
+        table_names = inspect(engine).get_table_names()
+        assert "organizations" in table_names
+        assert "plants" in table_names
+        assert "production_lines" in table_names
+        assert "machines" in table_names
+        assert "sensors" in table_names
+    finally:
+        engine.dispose()
