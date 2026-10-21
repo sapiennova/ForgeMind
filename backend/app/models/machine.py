@@ -38,6 +38,7 @@ class Machine(Base):
     production_line: Mapped["ProductionLine"] = relationship(
         "ProductionLine", back_populates="machines"
     )
+    sensors: Mapped[list["Sensor"]] = relationship("Sensor", back_populates="machine")
 
     def __init__(
         self,
