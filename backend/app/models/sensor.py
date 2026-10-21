@@ -37,6 +37,9 @@ class Sensor(Base):
     )
 
     machine: Mapped["Machine"] = relationship("Machine", back_populates="sensors")
+    readings: Mapped[list["SensorReading"]] = relationship(
+        "SensorReading", back_populates="sensor"
+    )
 
     def __init__(
         self,
