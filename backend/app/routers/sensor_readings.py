@@ -1,4 +1,4 @@
-"""Read-only API endpoints for persisted sensor readings."""
+"""API endpoints for sensor reading ingestion and retrieval."""
 
 from uuid import UUID
 
@@ -10,6 +10,8 @@ from backend.app.database import get_db
 from backend.app.models.sensor import Sensor
 from backend.app.models.sensor_reading import SensorReading
 from backend.app.schemas.sensor_reading import (
+    SensorReadingCreate,
+    SensorReadingCreatedResponse,
     SensorReadingResponse,
     SensorReadingsResponse,
 )
@@ -18,6 +20,35 @@ router = APIRouter(prefix="/api/v1/sensors", tags=["sensor readings"])
 
 DEFAULT_READING_LIMIT = 100
 MAX_READING_LIMIT = 500
+
+
+@router.post(
+    "/{sensor_id}/readings",
+    response_model=SensorReadingCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ingest a sensor reading",
+)
+def create_sensor_reading(
+    sensor_id: UUID,
+    payload: SensorReadingCreate,
+    db: Session = Depends(get_db),
+) -> SensorReadingCreatedResponse:
+    """Persist one measurement for an existing sensor."""
+    if db.get(Sensor, sensor_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sensor not found",
+        )
+
+    reading = SensorReading(
+        sensor_id=sensor_id,
+        value=payload.value,
+        recorded_at=payload.recorded_at,
+    )
+    db.add(reading)
+    db.commit()
+    db.refresh(reading)
+    return SensorReadingCreatedResponse.model_validate(reading)
 
 
 @router.get(
