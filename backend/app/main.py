@@ -6,10 +6,12 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from backend.app.routers.machine_telemetry import router as machine_telemetry_router
 from backend.app.routers.sensor_readings import router as sensor_readings_router
 
 app = FastAPI(title="ForgeMind API", version="0.1.0")
 app.include_router(sensor_readings_router)
+app.include_router(machine_telemetry_router)
 
 
 @app.exception_handler(RequestValidationError)
