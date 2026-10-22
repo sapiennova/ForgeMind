@@ -177,3 +177,131 @@ def test_nonexistent_sensor_returns_404(api_client):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Sensor not found"
+
+
+def test_post_sensor_reading_creates_and_persists_reading(api_client):
+    sensor_id = _create_sensor(api_client)
+
+    response = api_client.post(
+        f"/api/v1/sensors/{sensor_id}/readings",
+        json={"value": 42.5},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert set(body) == {"id", "sensor_id", "value", "recorded_at"}
+    assert UUID(body["id"])
+    assert body["sensor_id"] == str(sensor_id)
+    assert body["value"] == 42.5
+    created_at = datetime.fromisoformat(body["recorded_at"].replace("Z", "+00:00"))
+    assert created_at.tzinfo is not None
+    assert created_at.utcoffset().total_seconds() == 0
+
+    listed = api_client.get(f"/api/v1/sensors/{sensor_id}/readings")
+    assert listed.status_code == 200
+    assert len(listed.json()["readings"]) == 1
+    assert listed.json()["readings"][0]["id"] == body["id"]
+    assert listed.json()["readings"][0]["value"] == 42.5
+
+
+def test_post_sensor_reading_uses_model_timestamp_default(api_client):
+    sensor_id = _create_sensor(api_client)
+    before = datetime.now(timezone.utc)
+
+    response = api_client.post(
+        f"/api/v1/sensors/{sensor_id}/readings",
+        json={"value": 7.25},
+    )
+
+    after = datetime.now(timezone.utc)
+    assert response.status_code == 201
+    recorded_at = datetime.fromisoformat(
+        response.json()["recorded_at"].replace("Z", "+00:00")
+    )
+    assert before <= recorded_at <= after
+
+
+def test_post_sensor_reading_normalizes_explicit_timestamp_to_utc(api_client):
+    sensor_id = _create_sensor(api_client)
+
+    response = api_client.post(
+        f"/api/v1/sensors/{sensor_id}/readings",
+        json={"value": 12, "recorded_at": "2026-10-20T15:30:00+03:00"},
+    )
+
+    assert response.status_code == 201
+    recorded_at = datetime.fromisoformat(
+        response.json()["recorded_at"].replace("Z", "+00:00")
+    )
+    assert recorded_at == datetime(2026, 10, 20, 12, 30, tzinfo=timezone.utc)
+
+
+def test_post_sensor_reading_interprets_naive_timestamp_as_utc(api_client):
+    sensor_id = _create_sensor(api_client)
+
+    response = api_client.post(
+        f"/api/v1/sensors/{sensor_id}/readings",
+        json={"value": 12, "recorded_at": "2026-10-20T12:30:00"},
+    )
+
+    assert response.status_code == 201
+    recorded_at = datetime.fromisoformat(
+        response.json()["recorded_at"].replace("Z", "+00:00")
+    )
+    assert recorded_at == datetime(2026, 10, 20, 12, 30, tzinfo=timezone.utc)
+
+
+def test_post_sensor_reading_rejects_malformed_sensor_uuid(api_client):
+    response = api_client.post(
+        "/api/v1/sensors/not-a-uuid/readings",
+        json={"value": 1},
+    )
+    assert response.status_code == 422
+
+
+def test_post_sensor_reading_returns_404_for_unknown_sensor(api_client):
+    response = api_client.post(
+        "/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
+        json={"value": 1},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Sensor not found"
+
+
+@pytest.mark.parametrize("payload", [{}, {"value": None}, {"value": "not-a-number"}])
+def test_post_sensor_reading_rejects_missing_or_invalid_value(api_client, payload):
+    sensor_id = _create_sensor(api_client)
+    response = api_client.post(f"/api/v1/sensors/{sensor_id}/readings", json=payload)
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_post_sensor_reading_rejects_non_finite_values(api_client, value):
+    sensor_id = _create_sensor(api_client)
+    response = api_client.post(
+        f"/api/v1/sensors/{sensor_id}/readings",
+        json={"value": value},
+    )
+    assert response.status_code == 422
+
+
+def test_post_sensor_reading_rejects_invalid_timestamp(api_client):
+    sensor_id = _create_sensor(api_client)
+    response = api_client.post(
+        f"/api/v1/sensors/{sensor_id}/readings",
+        json={"value": 1, "recorded_at": "not-a-timestamp"},
+    )
+    assert response.status_code == 422
+
+
+def test_post_sensor_reading_does_not_accept_internal_fields(api_client):
+    sensor_id = _create_sensor(api_client)
+    response = api_client.post(
+        f"/api/v1/sensors/{sensor_id}/readings",
+        json={
+            "value": 1,
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "sensor_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        },
+    )
+    assert response.status_code == 422
