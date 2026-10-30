@@ -305,3 +305,18 @@ def test_post_sensor_reading_does_not_accept_internal_fields(api_client):
         },
     )
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize("body", ['{"value": 1e999}', '{"value": -1e999}'])
+def test_post_sensor_reading_rejects_overflowing_json_numbers(api_client, body):
+    """Reject valid JSON numeric literals that overflow to infinity when parsed."""
+    sensor_id = _create_sensor(api_client)
+    response = api_client.post(
+        f"/api/v1/sensors/{sensor_id}/readings",
+        content=body,
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["msg"] == (
+        "Input must contain only finite numeric values"
+    )
