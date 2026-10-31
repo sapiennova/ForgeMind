@@ -190,3 +190,11 @@ def test_empty_input_is_deterministically_disconnected(sensor):
 def test_invalid_policy_parameters_are_rejected(kwargs):
     with pytest.raises(ValueError):
         SensorHealthPolicy(**kwargs)
+
+
+
+def test_historical_frozen_run_does_not_override_recovered_latest_readings(sensor, make_readings):
+    readings = make_readings([5.0] * 5 + [6.0, 7.0])
+    result = evaluate_sensor_health(sensor, readings, EVALUATED_AT)
+    assert ReasonCode.FROZEN_VALUE not in codes(result)
+    assert result.health_state is HealthState.NORMAL
