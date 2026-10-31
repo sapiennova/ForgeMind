@@ -64,8 +64,6 @@ def detect_frozen_value(
         return None
 
     ordered = _ordered_readings(readings)
-    longest_count = 1
-    longest_value = float(ordered[0][1].value)
     run_count = 1
     run_value = float(ordered[0][1].value)
 
@@ -74,23 +72,18 @@ def detect_frozen_value(
         if math.isclose(value, run_value, rel_tol=0.0, abs_tol=policy.frozen_tolerance):
             run_count += 1
         else:
-            if run_count >= longest_count:
-                longest_count, longest_value = run_count, run_value
             run_count, run_value = 1, value
 
-    if run_count >= longest_count:
-        longest_count, longest_value = run_count, run_value
-
-    if longest_count < policy.frozen_min_consecutive_readings:
+    if run_count < policy.frozen_min_consecutive_readings:
         return None
 
     return DetectedCondition(
         reason_code=ReasonCode.FROZEN_VALUE,
         health_state=HealthState.FAULT,
-        explanation="Consecutive readings are effectively unchanged for longer than the configured evidence threshold.",
+        explanation="The most recent consecutive readings are effectively unchanged for longer than the configured evidence threshold.",
         evidence={
-            "repeated_value": longest_value,
-            "consecutive_reading_count": longest_count,
+            "repeated_value": run_value,
+            "consecutive_reading_count": run_count,
             "minimum_consecutive_readings": policy.frozen_min_consecutive_readings,
             "numeric_tolerance": policy.frozen_tolerance,
         },
