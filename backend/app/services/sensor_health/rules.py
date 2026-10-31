@@ -79,8 +79,8 @@ def detect_frozen_value(
 
     return DetectedCondition(
         reason_code=ReasonCode.FROZEN_VALUE,
-        health_state=HealthState.FAULT,
-        explanation="The most recent consecutive readings are effectively unchanged for longer than the configured evidence threshold.",
+        health_state=HealthState.SUSPECTED,
+        explanation="The most recent consecutive readings are effectively unchanged; this may indicate an issue but does not establish sensor failure.",
         evidence={
             "repeated_value": run_value,
             "consecutive_reading_count": run_count,

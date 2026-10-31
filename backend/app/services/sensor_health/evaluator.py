@@ -46,12 +46,24 @@ def evaluate_sensor_health(
     timestamp = normalize_utc(evaluated_at)
     active_policy = policy or SensorHealthPolicy()
 
+    # Exclude future-dated telemetry once, before any rule sees the data.
+    # Normalize to UTC first so aware timestamps with different offsets compare
+    # correctly, and treat naive timestamps as UTC per the project convention.
+    eligible_readings = [
+        reading
+        for reading in readings
+        if normalize_utc(reading.recorded_at) <= timestamp
+    ]
+    eligible_readings.sort(
+        key=lambda reading: (normalize_utc(reading.recorded_at), str(reading.id))
+    )
+
     conditions: list[DetectedCondition] = []
     for condition in (
-        detect_missing_or_stale(readings, timestamp, active_policy),
-        detect_frozen_value(readings, active_policy),
-        detect_excessive_spike(readings, active_policy),
-        detect_abnormal_rate_of_change(readings, active_policy),
+        detect_missing_or_stale(eligible_readings, timestamp, active_policy),
+        detect_frozen_value(eligible_readings, active_policy),
+        detect_excessive_spike(eligible_readings, active_policy),
+        detect_abnormal_rate_of_change(eligible_readings, active_policy),
     ):
         if condition is not None:
             conditions.append(condition)

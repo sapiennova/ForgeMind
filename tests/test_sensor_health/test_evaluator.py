@@ -55,10 +55,10 @@ def test_fresh_readings_remain_normal(sensor, make_readings):
     assert result.health_state is HealthState.NORMAL
 
 
-def test_frozen_consecutive_readings_are_fault(sensor, make_readings):
+def test_frozen_consecutive_readings_are_suspected(sensor, make_readings):
     readings = make_readings([7.0] * 5)
     result = evaluate_sensor_health(sensor, readings, EVALUATED_AT)
-    assert result.health_state is HealthState.FAULT
+    assert result.health_state is HealthState.SUSPECTED
     condition = next(item for item in result.detected_conditions if item.reason_code is ReasonCode.FROZEN_VALUE)
     assert condition.evidence["repeated_value"] == 7.0
     assert condition.evidence["consecutive_reading_count"] == 5
@@ -137,7 +137,7 @@ def test_multiple_conditions_are_preserved_and_precedence_is_deterministic(senso
     assert ReasonCode.ABNORMAL_RATE_OF_CHANGE in codes(result)
 
 
-def test_fault_precedes_suspected_when_connected(sensor, make_readings):
+def test_frozen_and_spike_conditions_resolve_to_suspected(sensor, make_readings):
     readings = make_readings([1.0, 30.0, 30.0, 30.0, 30.0, 30.0],
                              start=EVALUATED_AT - timedelta(seconds=5))
     policy = SensorHealthPolicy(
@@ -145,7 +145,7 @@ def test_fault_precedes_suspected_when_connected(sensor, make_readings):
         spike_threshold=10.0,
     )
     result = evaluate_sensor_health(sensor, readings, EVALUATED_AT, policy)
-    assert result.health_state is HealthState.FAULT
+    assert result.health_state is HealthState.SUSPECTED
     assert ReasonCode.EXCESSIVE_SPIKE in codes(result)
     assert ReasonCode.FROZEN_VALUE in codes(result)
 
@@ -198,3 +198,64 @@ def test_historical_frozen_run_does_not_override_recovered_latest_readings(senso
     result = evaluate_sensor_health(sensor, readings, EVALUATED_AT)
     assert ReasonCode.FROZEN_VALUE not in codes(result)
     assert result.health_state is HealthState.NORMAL
+
+def test_future_reading_does_not_hide_an_old_legitimate_reading(sensor, make_readings):
+    old_reading = make_readings(
+        [12.0], start=EVALUATED_AT - timedelta(seconds=301)
+    )
+    future_reading = make_readings(
+        [999.0], start=EVALUATED_AT + timedelta(seconds=60)
+    )
+
+    result = evaluate_sensor_health(
+        sensor,
+        old_reading + future_reading,
+        EVALUATED_AT,
+        SensorHealthPolicy(freshness_threshold_seconds=300),
+    )
+
+    assert result.health_state is HealthState.DISCONNECTED
+    assert codes(result) == {ReasonCode.STALE_READING}
+    assert result.supporting_evidence["STALE_READING"]["latest_recorded_at"] == (
+        old_reading[0].recorded_at.isoformat()
+    )
+
+
+def test_future_readings_cannot_influence_any_detection_rule(sensor, make_readings):
+    fresh_readings = make_readings(
+        [1.0, 2.0, 3.0], start=EVALUATED_AT - timedelta(seconds=2)
+    )
+    future_repeated_readings = make_readings(
+        [1000.0] * 5, start=EVALUATED_AT + timedelta(seconds=1)
+    )
+    policy = SensorHealthPolicy(
+        freshness_threshold_seconds=300,
+        frozen_min_consecutive_readings=5,
+        spike_threshold=10.0,
+        max_rate_of_change_per_second=1.0,
+    )
+
+    result = evaluate_sensor_health(
+        sensor,
+        fresh_readings + future_repeated_readings,
+        EVALUATED_AT,
+        policy,
+    )
+
+    assert result.health_state is HealthState.NORMAL
+    assert result.detected_conditions == ()
+    assert result.supporting_evidence == {}
+
+
+def test_only_future_readings_are_treated_as_no_readings(sensor, make_readings):
+    future_readings = make_readings(
+        [4.0, 4.0, 4.0, 4.0, 4.0],
+        start=EVALUATED_AT + timedelta(seconds=1),
+    )
+
+    result = evaluate_sensor_health(sensor, future_readings, EVALUATED_AT)
+
+    assert result.health_state is HealthState.DISCONNECTED
+    assert codes(result) == {ReasonCode.NO_READINGS}
+    assert result.supporting_evidence["NO_READINGS"]["reading_count"] == 0
+
