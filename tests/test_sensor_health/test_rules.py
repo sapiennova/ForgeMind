@@ -43,3 +43,14 @@ def test_stale_rule_uses_explicit_evaluation_time(make_readings):
     ))
     assert condition is not None
     assert condition.reason_code is ReasonCode.STALE_READING
+
+
+
+def test_spike_rule_orders_readings_chronologically(make_readings):
+    readings = list(reversed(make_readings([1.0, 2.0, 20.0])))
+    condition = detect_excessive_spike(
+        readings, SensorHealthPolicy(spike_threshold=10.0)
+    )
+    assert condition is not None
+    assert condition.evidence["events"][0]["previous_value"] == 2.0
+    assert condition.evidence["events"][0]["current_value"] == 20.0
