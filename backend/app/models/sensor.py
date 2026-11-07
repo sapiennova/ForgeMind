@@ -40,6 +40,9 @@ class Sensor(Base):
     readings: Mapped[list["SensorReading"]] = relationship(
         "SensorReading", back_populates="sensor"
     )
+    calibrations: Mapped[list["SensorCalibration"]] = relationship(
+        "SensorCalibration", back_populates="sensor"
+    )
 
     def __init__(
         self,
