@@ -94,7 +94,7 @@ def test_health_is_public_and_minimal():
     "environment",
     [
         {"FORGEMIND_ENV": "production", "FORGEMIND_ALLOWED_HOSTS": "api.example.com"},
-        {"FORGEMIND_ENV": "production", "FORGEMIND_API_KEY": "short", "FORGEMIND_ALLOWED_HOSTS": "api.example.com"},
+        {"FORGEMIND_ENV": "production", "FORGEMIND_API_KEY": "x" * 5, "FORGEMIND_ALLOWED_HOSTS": "api.example.com"},
         {"FORGEMIND_ENV": "production", "FORGEMIND_API_KEY": TEST_KEY},
         {"FORGEMIND_ENV": "production", "FORGEMIND_API_KEY": TEST_KEY, "FORGEMIND_ALLOWED_HOSTS": "*"},
         {"FORGEMIND_ENV": "development", "FORGEMIND_ALLOWED_HOSTS": "   "},
