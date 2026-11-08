@@ -36,6 +36,15 @@ key should be supplied over TLS only. Rotate it through your secret manager and
 restart/redeploy the service; do not place it in URLs, query parameters, logs,
 browser code, or source control.
 
+## Source repository visibility
+
+The GitHub repository is currently public. Application authentication, CORS, and
+network controls protect the deployed API; they cannot stop people or automated
+crawlers from cloning source code from a public GitHub repository. Restricting
+source cloning requires changing repository visibility to private and managing
+GitHub collaborator access. This is a separate GitHub setting, not a backend
+security feature.
+
 ## Network and deployment
 
 Run the service on a private interface behind a maintained reverse proxy or API
