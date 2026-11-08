@@ -2,7 +2,7 @@
 
 ## Authentication boundary
 
-Every operational router is mounted behind HTTP Bearer API-key authentication. Configure
+Every request under the `/api/` namespace is centrally guarded by HTTP Bearer API-key authentication, so adding a future operational router under that namespace does not silently omit the boundary. Current routers also declare the reusable authentication dependency as defense in depth. Configure
 `FORGEMIND_API_KEY` with a unique, randomly generated value of at least 32 bytes.
 The comparison uses constant-time `hmac.compare_digest`. The key is read from the
 process environment and is never returned by an endpoint. If it is absent outside
