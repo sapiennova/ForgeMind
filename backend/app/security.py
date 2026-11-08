@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 from typing import Mapping
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 
@@ -26,7 +26,7 @@ class SecuritySettings:
 
 
 def load_security_settings(environ: Mapping[str, str] | None = None) -> SecuritySettings:
-    """Load explicit security settings; production fails closed."""
+    """Load explicit settings and fail closed for incomplete production configuration."""
     env = os.environ if environ is None else environ
     environment = env.get("FORGEMIND_ENV", "development").strip().lower()
     if environment not in {"development", "test", "production"}:
@@ -40,17 +40,12 @@ def load_security_settings(environ: Mapping[str, str] | None = None) -> Security
             raise RuntimeError("Production requires FORGEMIND_API_KEY of at least 32 bytes")
         if not raw_hosts or not [v.strip() for v in raw_hosts.split(",") if v.strip()]:
             raise RuntimeError("Production requires explicit FORGEMIND_ALLOWED_HOSTS")
-        if not raw_origins:
-            cors_origins: tuple[str, ...] = ()
-        else:
-            cors_origins = tuple(v.strip() for v in raw_origins.split(",") if v.strip())
         allowed_hosts = tuple(v.strip() for v in raw_hosts.split(",") if v.strip())
+        cors_origins = tuple(v.strip() for v in (raw_origins or "").split(",") if v.strip())
         if "*" in allowed_hosts or "*" in cors_origins:
             raise RuntimeError("Wildcard hosts and CORS origins are forbidden")
     else:
-        allowed_hosts = tuple(
-            v.strip() for v in (raw_hosts or "localhost,127.0.0.1,testserver").split(",") if v.strip()
-        )
+        allowed_hosts = tuple(v.strip() for v in (raw_hosts or "localhost,127.0.0.1,testserver").split(",") if v.strip())
         cors_origins = tuple(v.strip() for v in (raw_origins or "").split(",") if v.strip())
 
     try:
@@ -61,14 +56,7 @@ def load_security_settings(environ: Mapping[str, str] | None = None) -> Security
         raise RuntimeError("FORGEMIND_MAX_REQUEST_BYTES must be between 1024 and 104857600")
 
     docs_enabled = environment != "production" and env.get("FORGEMIND_DOCS_ENABLED", "true").lower() == "true"
-    return SecuritySettings(
-        environment=environment,
-        api_key=api_key,
-        allowed_hosts=allowed_hosts,
-        cors_origins=cors_origins,
-        max_request_bytes=max_request_bytes,
-        docs_enabled=docs_enabled,
-    )
+    return SecuritySettings(environment, api_key, allowed_hosts, cors_origins, max_request_bytes, docs_enabled)
 
 
 _bearer = HTTPBearer(auto_error=False)
@@ -76,15 +64,12 @@ _bearer = HTTPBearer(auto_error=False)
 
 def require_api_key(
     request: Request,
-    credentials: HTTPAuthorizationCredentials | None = None,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> str:
-    """Require a configured bearer API key; never grant access on missing config."""
+    """Require a configured bearer API key; missing configuration never grants access."""
     settings: SecuritySettings = request.app.state.security_settings
     if not settings.api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="API authentication is not configured",
-        )
+        raise HTTPException(status_code=503, detail="API authentication is not configured")
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
