@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -116,10 +117,15 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
 
     @application.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        errors = [
-            {key: value for key, value in error.items() if key in {"type", "loc", "msg"}}
-            for error in exc.errors()
-        ]
+        errors = []
+        for error in exc.errors():
+            input_value = error.get("input")
+            message = (
+                "Input must contain only finite numeric values"
+                if isinstance(input_value, float) and not math.isfinite(input_value)
+                else "Invalid request"
+            )
+            errors.append({"type": error.get("type", "validation_error"), "loc": error.get("loc", []), "msg": message})
         return JSONResponse(status_code=422, content={"detail": errors})
 
     @application.exception_handler(Exception)
