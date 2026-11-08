@@ -1,7 +1,5 @@
 """Security regression tests for the API boundary."""
 
-from dataclasses import replace
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -40,6 +38,15 @@ def test_operational_endpoint_rejects_invalid_credentials():
     assert response.status_code == 401
 
 
+def test_operational_endpoint_rejects_malformed_authentication_scheme():
+    with TestClient(create_app(settings())) as client:
+        response = client.get(
+            "/api/v1/machines/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/telemetry",
+            headers={"Authorization": "Basic dXNlcjpwYXNz"},
+        )
+    assert response.status_code == 401
+
+
 def test_valid_credentials_reach_resource_handler():
     with TestClient(create_app(settings())) as client:
         response = client.get(
@@ -70,6 +77,7 @@ def test_health_is_public_and_minimal():
         {"FORGEMIND_ENV": "production", "FORGEMIND_API_KEY": "short", "FORGEMIND_ALLOWED_HOSTS": "api.example.com"},
         {"FORGEMIND_ENV": "production", "FORGEMIND_API_KEY": TEST_KEY},
         {"FORGEMIND_ENV": "production", "FORGEMIND_API_KEY": TEST_KEY, "FORGEMIND_ALLOWED_HOSTS": "*"},
+        {"FORGEMIND_ENV": "development", "FORGEMIND_ALLOWED_HOSTS": "   "},
     ],
 )
 def test_production_configuration_fails_without_required_secrets_or_safe_hosts(environment):
