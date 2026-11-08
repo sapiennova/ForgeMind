@@ -180,6 +180,16 @@ def test_security_headers_are_present():
     assert response.headers["referrer-policy"] == "no-referrer"
 
 
+def test_validation_error_does_not_echo_submitted_secret():
+    with TestClient(create_app(settings()), headers={"Authorization": f"Bearer {TEST_KEY}"}) as client:
+        response = client.post(
+            "/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
+            json={"value": "sensitive-submitted-value"},
+        )
+    assert response.status_code == 422
+    assert "sensitive-submitted-value" not in response.text
+
+
 def test_unexpected_exception_does_not_leak_details():
     application = create_app(settings())
 
