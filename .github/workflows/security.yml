@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.6.0
         with:
@@ -50,6 +52,12 @@ jobs:
           print("No potential secrets detected.")
           PY
       - name: Check patch whitespace
-        run: git diff --check
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git diff --check "origin/$GITHUB_BASE_REF...HEAD"
+          else
+            git diff --check HEAD^
+          fi
       - name: Run test suite
         run: python -m pytest -q
