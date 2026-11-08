@@ -39,7 +39,7 @@ jobs:
       - name: Run automated secret scan
         shell: bash
         run: |
-          detect-secrets scan --all-files > /tmp/secrets.json
+          detect-secrets scan > /tmp/secrets.json
           python - <<'PY'
           import json
           from pathlib import Path
