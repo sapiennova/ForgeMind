@@ -58,8 +58,7 @@ limiter is production-safe.
 The application enforces a body-size cap, validates Host headers, disables
 interactive docs/OpenAPI in production, adds defensive response headers, and
 returns generic unexpected-error responses. Health is an unauthenticated minimal
-liveness probe; do not add infrastructure diagnostics to it. HSTS is emitted only
-when the ASGI connection is HTTPS. The Nginx example emits HSTS at the TLS termination point. Ensure TLS termination and proxy configuration are correct before relying on HSTS.
+liveness probe; do not add infrastructure diagnostics to it. HSTS is emitted by the Nginx example at the TLS termination point, avoiding duplicate headers behind TLS termination. Ensure TLS termination and proxy configuration are correct before relying on HSTS.
 
 ## Monitoring and operations
 
