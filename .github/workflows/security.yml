@@ -1,0 +1,53 @@
+name: Security checks
+
+on:
+  pull_request:
+    branches: [Development]
+  push:
+    branches: [Development]
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-security:
+    name: Dependency audit and static analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Install backend dependencies and scanners
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+          python -m pip install pip-audit bandit detect-secrets
+      - name: Audit backend dependencies
+        run: pip-audit -r backend/requirements.txt
+      - name: Run Bandit
+        run: bandit -q -r backend/app -ll
+      - name: Run credential scan
+        shell: bash
+        run: |
+          detect-secrets scan > /tmp/secrets.json
+          python scripts/check_credential_baseline.py /tmp/secrets.json .secrets.baseline
+      - name: Check patch whitespace
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git diff --check "origin/$GITHUB_BASE_REF...HEAD"
+          else
+            git diff --check HEAD^
+          fi
+      - name: Run test suite
+        run: python -m pytest -q
