@@ -255,7 +255,7 @@ def test_streamed_request_body_without_content_length_returns_safe_413():
         for message in sent
         if message["type"] == "http.response.body"
     )
-    assert response_start["status"] == 413
+    assert response_start["status"] == 413, response_body.decode(errors="replace")
     assert json.loads(response_body) == {"detail": "Request body too large"}
     assert b"internal-stream-marker" not in response_body
     response_headers = dict(response_start["headers"])
