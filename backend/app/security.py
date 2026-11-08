@@ -20,6 +20,15 @@ class SecuritySettings:
     max_request_bytes: int
     docs_enabled: bool
 
+    def __post_init__(self) -> None:
+        if self.environment == "production":
+            if not self.api_key or len(self.api_key.encode("utf-8")) < 32:
+                raise RuntimeError("Production requires FORGEMIND_API_KEY of at least 32 bytes")
+            if not self.allowed_hosts or "*" in self.allowed_hosts or "*" in self.cors_origins:
+                raise RuntimeError("Production requires explicit, non-wildcard host configuration")
+        if not 1024 <= self.max_request_bytes <= 104857600:
+            raise RuntimeError("FORGEMIND_MAX_REQUEST_BYTES must be between 1024 and 104857600")
+
     @property
     def production(self) -> bool:
         return self.environment == "production"
