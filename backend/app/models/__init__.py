@@ -5,6 +5,15 @@ from backend.app.models.organization import Organization
 from backend.app.models.plant import Plant
 from backend.app.models.production_line import ProductionLine
 from backend.app.models.sensor import Sensor
+from backend.app.models.sensor_calibration import SensorCalibration
 from backend.app.models.sensor_reading import SensorReading
 
-__all__ = ["Machine", "Organization", "Plant", "ProductionLine", "Sensor", "SensorReading"]
+__all__ = [
+    "Machine",
+    "Organization",
+    "Plant",
+    "ProductionLine",
+    "Sensor",
+    "SensorCalibration",
+    "SensorReading",
+]
