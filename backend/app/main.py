@@ -93,7 +93,6 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
     )
     application.state.security_settings = security_settings
     application.add_middleware(RequestSizeLimitMiddleware, max_bytes=security_settings.max_request_bytes)
-    application.add_middleware(TrustedHostMiddleware, allowed_hosts=list(security_settings.allowed_hosts))
     if security_settings.cors_origins:
         application.add_middleware(
             CORSMiddleware,
@@ -103,6 +102,8 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
             allow_headers=["Authorization", "Content-Type"],
             max_age=600,
         )
+    # Added last so host validation wraps CORS and all application responses.
+    application.add_middleware(TrustedHostMiddleware, allowed_hosts=list(security_settings.allowed_hosts))
 
     protected = [Depends(require_api_key)]
     application.include_router(sensor_readings_router, dependencies=protected)
