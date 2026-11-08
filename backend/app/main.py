@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections import deque
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -16,10 +17,6 @@ from backend.app.routers.sensor_readings import router as sensor_readings_router
 from backend.app.security import SecuritySettings, load_security_settings, require_api_key, validate_api_key
 
 logger = logging.getLogger(__name__)
-
-
-class _RequestTooLarge(Exception):
-    pass
 
 
 class APIAuthenticationMiddleware:
@@ -77,21 +74,36 @@ class RequestSizeLimitMiddleware:
                 await JSONResponse({"detail": "Request body too large"}, 413)(scope, receive, send)
                 return
 
+        # Buffer at most the configured limit before invoking the application.
+        # This avoids raising from ASGI receive(), which FastAPI's body parser may
+        # translate into a generic 400 before an outer middleware can return 413.
+        buffered_messages = deque()
         received = 0
-
-        async def limited_receive():
-            nonlocal received
+        while True:
             message = await receive()
+            if message["type"] == "http.disconnect":
+                buffered_messages.append(message)
+                break
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > self.max_bytes:
-                    raise _RequestTooLarge
-            return message
+                    await JSONResponse(
+                        {"detail": "Request body too large"}, status_code=413
+                    )(scope, receive, send)
+                    return
+                buffered_messages.append(message)
+                if not message.get("more_body", False):
+                    break
+            else:
+                buffered_messages.append(message)
+                break
 
-        # Let Starlette's ExceptionMiddleware translate this dedicated exception.
-        # Catching it outside the application can race with ServerErrorMiddleware,
-        # which may already have started a 500 response.
-        await self.app(scope, limited_receive, send)
+        async def replay_receive():
+            if buffered_messages:
+                return buffered_messages.popleft()
+            return await receive()
+
+        await self.app(scope, replay_receive, send)
 
 
 class SecurityHeadersMiddleware:
@@ -133,11 +145,12 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
     )
     application.state.security_settings = security_settings
     # Starlette wraps middleware in reverse registration order. The resulting
-    # request path is SecurityHeaders -> TrustedHost -> CORS -> RequestSize ->
-    # Authentication -> routing. Thus host validation precedes CORS, preflight
-    # is answered before bearer auth, and size checks wrap authenticated handlers.
-    application.add_middleware(APIAuthenticationMiddleware, settings=security_settings)
+    # request path is SecurityHeaders -> TrustedHost -> CORS -> Authentication
+    # -> RequestSize -> routing. Host validation precedes CORS, preflight is
+    # answered before bearer auth, and auth rejects callers before body buffering.
+    # Authenticated requests are size-checked before any route handler executes.
     application.add_middleware(RequestSizeLimitMiddleware, max_bytes=security_settings.max_request_bytes)
+    application.add_middleware(APIAuthenticationMiddleware, settings=security_settings)
     if security_settings.cors_origins:
         application.add_middleware(
             CORSMiddleware,
@@ -159,10 +172,6 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
     def health_check() -> dict[str, str]:
         """Unauthenticated liveness probe; reveals no infrastructure details."""
         return {"status": "ok"}
-
-    @application.exception_handler(_RequestTooLarge)
-    async def request_too_large_exception_handler(request: Request, exc: _RequestTooLarge) -> JSONResponse:
-        return JSONResponse(status_code=413, content={"detail": "Request body too large"})
 
     @application.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
