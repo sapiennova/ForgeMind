@@ -49,14 +49,20 @@ def test_operational_endpoint_rejects_malformed_authentication_scheme():
     assert response.status_code == 401
 
 
-def test_valid_credentials_reach_resource_handler():
-    with TestClient(create_app(settings())) as client:
+def test_valid_credentials_reach_protected_handler_without_database_setup():
+    application = create_app(settings())
+
+    @application.get("/api/v1/security-test-resource")
+    def protected_resource():
+        return {"ok": True}
+
+    with TestClient(application) as client:
         response = client.get(
-            "/api/v1/machines/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/telemetry",
+            "/api/v1/security-test-resource",
             headers={"Authorization": f"Bearer {TEST_KEY}"},
         )
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Machine not found"
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
 
 
 def test_missing_server_credential_fails_closed():
@@ -149,6 +155,35 @@ def test_cors_does_not_allow_unconfigured_origin():
     assert "access-control-allow-origin" not in response.headers
 
 
+def test_cors_preflight_is_handled_before_bearer_authentication():
+    with TestClient(create_app(settings())) as client:
+        response = client.options(
+            "/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
+            headers={
+                "Origin": "https://console.example.test",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://console.example.test"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_untrusted_host_is_rejected_before_cors_preflight_handling():
+    application = create_app(settings())
+    with TestClient(application, base_url="http://attacker.example") as client:
+        response = client.options(
+            "/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
+            headers={
+                "Origin": "https://console.example.test",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
 def test_cors_allows_only_configured_origin_without_credentials():
     with TestClient(create_app(settings())) as client:
         response = client.options(
@@ -169,6 +204,34 @@ def test_request_body_size_limit_returns_413():
             "/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
             content=b"x" * 2048,
             headers={"Authorization": f"Bearer {TEST_KEY}", "Content-Type": "application/json"},
+        )
+    assert response.status_code == 413
+    assert response.json() == {"detail": "Request body too large"}
+
+
+def test_streamed_request_body_without_content_length_returns_safe_413():
+    chunks = iter([b"x" * 700, b"internal-stream-marker" + b"y" * 700])
+    with TestClient(create_app(settings()), raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
+            content=chunks,
+            headers={
+                "Authorization": f"Bearer {TEST_KEY}",
+                "Content-Type": "application/octet-stream",
+            },
+        )
+    assert response.status_code == 413
+    assert response.json() == {"detail": "Request body too large"}
+    assert "internal-stream-marker" not in response.text
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_declared_oversize_request_is_rejected_before_authentication():
+    with TestClient(create_app(settings())) as client:
+        response = client.post(
+            "/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
+            content=b"x" * 2048,
+            headers={"Content-Type": "application/json"},
         )
     assert response.status_code == 413
     assert response.json() == {"detail": "Request body too large"}
