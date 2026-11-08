@@ -88,25 +88,38 @@ class RequestSizeLimitMiddleware:
                     raise _RequestTooLarge
             return message
 
+        try:
+            await self.app(scope, limited_receive, send)
+        except _RequestTooLarge:
+            await JSONResponse({"detail": "Request body too large"}, 413)(scope, receive, send)
+
+
+class SecurityHeadersMiddleware:
+    """Add defensive response headers, including to early middleware responses."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
         async def secured_send(message):
             if message["type"] == "http.response.start":
-                response_headers = list(message.get("headers", []))
-                response_headers.extend([
+                headers = list(message.get("headers", []))
+                headers.extend([
                     (b"x-content-type-options", b"nosniff"),
                     (b"x-frame-options", b"DENY"),
                     (b"referrer-policy", b"no-referrer"),
-                    (b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'; base-uri 'none'"),
                     (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
                 ])
                 if scope.get("scheme") == "https":
-                    response_headers.append((b"strict-transport-security", b"max-age=31536000; includeSubDomains"))
-                message["headers"] = response_headers
+                    headers.append((b"strict-transport-security", b"max-age=31536000; includeSubDomains"))
+                message["headers"] = headers
             await send(message)
 
-        try:
-            await self.app(scope, limited_receive, secured_send)
-        except _RequestTooLarge:
-            await JSONResponse({"detail": "Request body too large"}, 413)(scope, receive, secured_send)
+        await self.app(scope, receive, secured_send)
 
 
 def create_app(settings: SecuritySettings | None = None) -> FastAPI:
@@ -132,8 +145,9 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
             allow_headers=["Authorization", "Content-Type"],
             max_age=600,
         )
-    # Added last so host validation wraps CORS and all application responses.
+    # Host validation wraps CORS; headers wrap all responses, including rejected requests.
     application.add_middleware(TrustedHostMiddleware, allowed_hosts=list(security_settings.allowed_hosts))
+    application.add_middleware(SecurityHeadersMiddleware)
 
     protected = [Depends(require_api_key)]
     application.include_router(sensor_readings_router, dependencies=protected)
