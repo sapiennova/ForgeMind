@@ -24,7 +24,14 @@ def _utc_now() -> datetime:
 
 
 def _as_utc(value: datetime) -> datetime:
-    """Convert an aware datetime to UTC for unambiguous comparisons."""
+    """Interpret naive timestamps as UTC and normalize aware values to UTC.
+
+    SQLite does not preserve timezone metadata for DateTime columns, so a
+    datetime reloaded from SQLite is naive even when it was originally UTC.
+    Treat those values as UTC rather than relying on the machine-local timezone.
+    """
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
 
 
