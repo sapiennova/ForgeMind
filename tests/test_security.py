@@ -63,6 +63,24 @@ def test_missing_server_credential_fails_closed():
     assert response.status_code == 503
 
 
+def test_central_boundary_protects_future_api_routes_without_route_dependencies():
+    application = create_app(settings())
+
+    @application.get("/api/v1/future-operational-resource")
+    def future_route():
+        return {"ok": True}
+
+    with TestClient(application) as client:
+        denied = client.get("/api/v1/future-operational-resource")
+        allowed = client.get(
+            "/api/v1/future-operational-resource",
+            headers={"Authorization": f"Bearer {TEST_KEY}"},
+        )
+
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+
+
 def test_health_is_public_and_minimal():
     with TestClient(create_app(settings())) as client:
         response = client.get("/health")
