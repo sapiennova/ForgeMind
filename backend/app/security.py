@@ -70,6 +70,15 @@ def load_security_settings(environ: Mapping[str, str] | None = None) -> Security
     return SecuritySettings(environment, api_key, allowed_hosts, cors_origins, max_request_bytes, docs_enabled)
 
 
+def validate_api_key(settings: SecuritySettings, token: bytes | None) -> tuple[int, str] | None:
+    """Return a safe authentication failure, or None when the key is valid."""
+    if not settings.api_key:
+        return 503, "API authentication is not configured"
+    if token is None or not hmac.compare_digest(token, settings.api_key.encode("utf-8")):
+        return 401, "Authentication required" if token is None else "Invalid credentials"
+    return None
+
+
 _bearer = HTTPBearer(auto_error=False)
 
 
@@ -79,18 +88,14 @@ def require_api_key(
 ) -> str:
     """Require a configured bearer API key; missing configuration never grants access."""
     settings: SecuritySettings = request.app.state.security_settings
-    if not settings.api_key:
-        raise HTTPException(status_code=503, detail="API authentication is not configured")
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not hmac.compare_digest(credentials.credentials, settings.api_key):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    token = (
+        credentials.credentials.encode("utf-8")
+        if credentials is not None and credentials.scheme.lower() == "bearer"
+        else None
+    )
+    failure = validate_api_key(settings, token)
+    if failure is not None:
+        code, detail = failure
+        headers = {"WWW-Authenticate": "Bearer"} if code == 401 else None
+        raise HTTPException(status_code=code, detail=detail, headers=headers)
     return "api-key"
