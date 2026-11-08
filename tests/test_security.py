@@ -44,7 +44,7 @@ def test_operational_endpoint_rejects_malformed_authentication_scheme():
     with TestClient(create_app(settings())) as client:
         response = client.get(
             "/api/v1/machines/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/telemetry",
-            headers={"Authorization": "Basic dXNlcjpwYXNz"},
+            headers={"Authorization": "Basic invalid"},
         )
     assert response.status_code == 401
 
