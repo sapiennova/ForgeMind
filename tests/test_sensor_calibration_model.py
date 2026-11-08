@@ -389,3 +389,129 @@ def test_reloaded_sqlite_calibration_compares_naive_dates_as_utc(
         else:
             monkeypatch.setenv("TZ", original_timezone)
         time.tzset()
+
+
+
+_NON_UTC = timezone(timedelta(hours=5, minutes=30))
+
+
+def test_non_utc_calibration_date_is_normalized_to_utc():
+    """An aware non-UTC calibration date is stored as its equivalent UTC instant."""
+    calibration_date = datetime(2026, 1, 15, 12, tzinfo=_NON_UTC)
+    record = _calibration(_sensor().id, calibration_date=calibration_date)
+
+    assert record.calibration_date == datetime(2026, 1, 15, 6, 30, tzinfo=timezone.utc)
+    assert record.calibration_date.utcoffset() == timedelta(0)
+
+
+def test_non_utc_next_calibration_due_is_normalized_to_utc():
+    """An aware non-UTC due date is stored as its equivalent UTC instant."""
+    due_date = datetime(2026, 1, 16, 14, tzinfo=_NON_UTC)
+    record = _calibration(
+        _sensor().id,
+        calibration_date=datetime(2026, 1, 16, 12, tzinfo=_NON_UTC),
+        next_calibration_due=due_date,
+    )
+
+    assert record.next_calibration_due == datetime(2026, 1, 16, 8, 30, tzinfo=timezone.utc)
+    assert record.next_calibration_due.utcoffset() == timedelta(0)
+
+
+def test_sqlite_round_trip_preserves_non_utc_input_instants_as_utc():
+    """Non-UTC calibration dates are normalized before SQLite strips timezone data."""
+    calibration_date = datetime(2026, 1, 15, 12, tzinfo=_NON_UTC)
+    due_date = datetime(2026, 1, 16, 14, tzinfo=_NON_UTC)
+    expected_calibration = datetime(2026, 1, 15, 6, 30, tzinfo=timezone.utc)
+    expected_due = datetime(2026, 1, 16, 8, 30, tzinfo=timezone.utc)
+    engine = _sqlite_engine()
+
+    try:
+        with Session(engine) as session:
+            sensor = _persist_sensor(session)
+            record = _calibration(
+                sensor.id,
+                calibration_date=calibration_date,
+                next_calibration_due=due_date,
+            )
+            session.add(record)
+            session.commit()
+
+            record_id = record.id
+            session.expunge_all()
+            reloaded = session.get(SensorCalibration, record_id)
+
+            assert reloaded is not None
+            assert reloaded.calibration_date == expected_calibration.replace(tzinfo=None)
+            assert reloaded.next_calibration_due == expected_due.replace(tzinfo=None)
+            assert reloaded.calibration_date.replace(tzinfo=timezone.utc) == expected_calibration
+            assert reloaded.next_calibration_due.replace(tzinfo=timezone.utc) == expected_due
+    finally:
+        engine.dispose()
+
+
+def test_reloaded_non_utc_calibration_accepts_due_date_before_local_wall_clock():
+    """A due date after the UTC instant is valid even when its UTC clock is earlier."""
+    calibration_date = datetime(2026, 1, 15, 12, tzinfo=_NON_UTC)
+    expected_calibration_utc = datetime(2026, 1, 15, 6, 30, tzinfo=timezone.utc)
+    valid_due_date = datetime(2026, 1, 15, 9, tzinfo=timezone.utc)
+    engine = _sqlite_engine()
+
+    try:
+        with Session(engine) as session:
+            sensor = _persist_sensor(session)
+            record = _calibration(sensor.id, calibration_date=calibration_date)
+            session.add(record)
+            session.commit()
+
+            record_id = record.id
+            session.expunge_all()
+            reloaded = session.get(SensorCalibration, record_id)
+
+            assert reloaded is not None
+            assert reloaded.calibration_date == expected_calibration_utc.replace(tzinfo=None)
+            assert valid_due_date.hour < calibration_date.hour
+
+            reloaded.next_calibration_due = valid_due_date
+
+            assert reloaded.next_calibration_due == valid_due_date
+    finally:
+        engine.dispose()
+
+
+def test_reloaded_non_utc_calibration_rejects_actually_earlier_due_date():
+    """A due date before the stored UTC calibration instant remains invalid."""
+    calibration_date = datetime(2026, 1, 15, 12, tzinfo=_NON_UTC)
+    earlier_due_date = datetime(2026, 1, 15, 6, 29, tzinfo=timezone.utc)
+    engine = _sqlite_engine()
+
+    try:
+        with Session(engine) as session:
+            sensor = _persist_sensor(session)
+            record = _calibration(sensor.id, calibration_date=calibration_date)
+            session.add(record)
+            session.commit()
+
+            record_id = record.id
+            session.expunge_all()
+            reloaded = session.get(SensorCalibration, record_id)
+
+            assert reloaded is not None
+            with pytest.raises(
+                ValueError,
+                match="next_calibration_due cannot be earlier than calibration_date",
+            ):
+                reloaded.next_calibration_due = earlier_due_date
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("field", ("calibration_date", "next_calibration_due"))
+def test_naive_calibration_datetime_inputs_remain_rejected(field: str):
+    """Both calibration date fields continue to require aware input datetimes."""
+    naive_value = datetime(2026, 1, 15, 12)
+    if field == "calibration_date":
+        with pytest.raises(ValueError, match="timezone-aware"):
+            _calibration(_sensor().id, calibration_date=naive_value)
+    else:
+        with pytest.raises(ValueError, match="timezone-aware"):
+            _calibration(_sensor().id, next_calibration_due=naive_value)

@@ -144,7 +144,7 @@ class SensorCalibration(Base):
 
     @validates("calibration_date", "next_calibration_due")
     def validate_calibration_dates(self, key: str, value: datetime | None) -> datetime | None:
-        """Require aware timestamps and keep the optional due date chronological."""
+        """Require aware timestamps, normalize them to UTC, and validate chronology."""
         if value is None:
             if key == "calibration_date":
                 raise ValueError("calibration_date is required")
@@ -153,13 +153,15 @@ class SensorCalibration(Base):
         if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
             raise ValueError(f"{key} must be a timezone-aware datetime")
 
+        normalized_value = _as_utc(value)
+
         if key == "calibration_date":
             due_date = getattr(self, "next_calibration_due", None)
-            if due_date is not None and _as_utc(due_date) < _as_utc(value):
+            if due_date is not None and _as_utc(due_date) < normalized_value:
                 raise ValueError("next_calibration_due cannot be earlier than calibration_date")
         else:
             calibration_date = getattr(self, "calibration_date", None)
-            if calibration_date is not None and _as_utc(value) < _as_utc(calibration_date):
+            if calibration_date is not None and normalized_value < _as_utc(calibration_date):
                 raise ValueError("next_calibration_due cannot be earlier than calibration_date")
 
-        return value
+        return normalized_value
