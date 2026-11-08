@@ -49,5 +49,7 @@ jobs:
               raise SystemExit("Secret scan found potential secrets; review before merging.")
           print("No potential secrets detected.")
           PY
+      - name: Check patch whitespace
+        run: git diff --check
       - name: Run test suite
         run: python -m pytest -q
