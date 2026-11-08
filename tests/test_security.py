@@ -197,11 +197,11 @@ def test_unexpected_exception_does_not_leak_details():
 
     @application.get("/test-exception")
     def raise_error():
-        raise RuntimeError("database-password=do-not-disclose")
+        raise RuntimeError("private-internal-error-marker")
 
     with TestClient(application, raise_server_exceptions=False) as client:
         response = client.get("/test-exception")
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal server error"}
-    assert "do-not-disclose" not in response.text
+    assert "private-internal-error-marker" not in response.text
