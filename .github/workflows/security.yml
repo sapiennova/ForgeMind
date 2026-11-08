@@ -47,7 +47,8 @@ jobs:
           findings = json.loads(Path("/tmp/secrets.json").read_text()).get("results", {})
           if findings:
               for path, secrets in findings.items():
-                  print(f"Potential secret findings in {path}: {len(secrets)}")
+                  for finding in secrets:
+                      print(f"Potential secret finding: {path}:{finding.get('line_number')} [{finding.get('type')}]")
               raise SystemExit("Secret scan found potential secrets; review before merging.")
           print("No potential secrets detected.")
           PY
