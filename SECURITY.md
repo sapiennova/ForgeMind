@@ -92,3 +92,7 @@ available for the repository plan.
 
 This foundation reduces common application risks; it is not a certification or a
 claim of production-grade security by itself.
+
+## Secret-scan baseline review
+
+The earlier automated finding in `tests/test_security.py` was reviewed as a false positive: it came from a deliberately weak test-only candidate used to verify that production configuration rejects weak API keys. It was not a credential. The test candidate is now constructed without a scanner-triggering literal, and the current scan no longer reports it. The tracked `.secrets.baseline` records this review decision; it contains no active suppression entries. New findings therefore remain blocking unless an exact fingerprint is reviewed, documented, and explicitly marked `is_secret: false` in the baseline.
