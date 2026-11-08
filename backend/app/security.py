@@ -27,9 +27,10 @@ class SecuritySettings:
             raise RuntimeError("FORGEMIND_ALLOWED_HOSTS must contain exact hostnames")
         if any("*" in origin for origin in self.cors_origins):
             raise RuntimeError("FORGEMIND_CORS_ORIGINS must contain exact origins")
-        if self.environment == "production":
-            if not self.api_key or len(self.api_key.encode("utf-8")) < 32:
-                raise RuntimeError("Production requires FORGEMIND_API_KEY of at least 32 bytes")
+        if self.api_key is not None and len(self.api_key.encode("utf-8")) < 32:
+            raise RuntimeError("FORGEMIND_API_KEY must be at least 32 bytes")
+        if self.environment == "production" and not self.api_key:
+            raise RuntimeError("Production requires FORGEMIND_API_KEY of at least 32 bytes")
         if not 1024 <= self.max_request_bytes <= 104857600:
             raise RuntimeError("FORGEMIND_MAX_REQUEST_BYTES must be between 1024 and 104857600")
 
@@ -49,7 +50,7 @@ def load_security_settings(environ: Mapping[str, str] | None = None) -> Security
     raw_hosts = env.get("FORGEMIND_ALLOWED_HOSTS")
     raw_origins = env.get("FORGEMIND_CORS_ORIGINS")
     if environment == "production":
-        if not api_key or len(api_key.encode("utf-8")) < 32:
+        if not api_key:
             raise RuntimeError("Production requires FORGEMIND_API_KEY of at least 32 bytes")
         if not raw_hosts or not [v.strip() for v in raw_hosts.split(",") if v.strip()]:
             raise RuntimeError("Production requires explicit FORGEMIND_ALLOWED_HOSTS")
