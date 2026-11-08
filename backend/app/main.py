@@ -88,10 +88,10 @@ class RequestSizeLimitMiddleware:
                     raise _RequestTooLarge
             return message
 
-        try:
-            await self.app(scope, limited_receive, send)
-        except _RequestTooLarge:
-            await JSONResponse({"detail": "Request body too large"}, 413)(scope, receive, send)
+        # Let Starlette's ExceptionMiddleware translate this dedicated exception.
+        # Catching it outside the application can race with ServerErrorMiddleware,
+        # which may already have started a 500 response.
+        await self.app(scope, limited_receive, send)
 
 
 class SecurityHeadersMiddleware:
@@ -132,8 +132,12 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
         debug=False,
     )
     application.state.security_settings = security_settings
-    application.add_middleware(RequestSizeLimitMiddleware, max_bytes=security_settings.max_request_bytes)
+    # Starlette wraps middleware in reverse registration order. The resulting
+    # request path is SecurityHeaders -> TrustedHost -> CORS -> RequestSize ->
+    # Authentication -> routing. Thus host validation precedes CORS, preflight
+    # is answered before bearer auth, and size checks wrap authenticated handlers.
     application.add_middleware(APIAuthenticationMiddleware, settings=security_settings)
+    application.add_middleware(RequestSizeLimitMiddleware, max_bytes=security_settings.max_request_bytes)
     if security_settings.cors_origins:
         application.add_middleware(
             CORSMiddleware,
@@ -155,6 +159,10 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
     def health_check() -> dict[str, str]:
         """Unauthenticated liveness probe; reveals no infrastructure details."""
         return {"status": "ok"}
+
+    @application.exception_handler(_RequestTooLarge)
+    async def request_too_large_exception_handler(request: Request, exc: _RequestTooLarge) -> JSONResponse:
+        return JSONResponse(status_code=413, content={"detail": "Request body too large"})
 
     @application.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
