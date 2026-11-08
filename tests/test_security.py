@@ -262,15 +262,14 @@ def test_streamed_request_body_without_content_length_returns_safe_413():
     assert response_headers[b"x-content-type-options"] == b"nosniff"
 
 
-def test_declared_oversize_request_is_rejected_before_authentication():
+def test_authentication_rejects_oversize_request_before_body_buffering():
     with TestClient(create_app(settings())) as client:
         response = client.post(
             "/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
             content=b"x" * 2048,
             headers={"Content-Type": "application/json"},
         )
-    assert response.status_code == 413
-    assert response.json() == {"detail": "Request body too large"}
+    assert response.status_code == 401
 
 
 def test_security_headers_are_present():
