@@ -4,7 +4,7 @@
 
 Every request under the `/api/` namespace is centrally guarded by HTTP Bearer API-key authentication, so adding a future operational router under that namespace does not silently omit the boundary. Current routers also declare the reusable authentication dependency as defense in depth. Configure
 `FORGEMIND_API_KEY` with a unique, randomly generated value of at least 32 bytes.
-The comparison uses constant-time `hmac.compare_digest`. The key is read from the
+Generate a key with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. The comparison uses constant-time `hmac.compare_digest`. This bootstrap key has no built-in expiry, per-client revocation, or overlapping rotation; rotate it through the secret manager and redeploy. The key is read from the
 process environment and is never returned by an endpoint. If it is absent outside
 production, operational requests fail with 503; they are never anonymously admitted.
 Production startup rejects a missing or short key.
