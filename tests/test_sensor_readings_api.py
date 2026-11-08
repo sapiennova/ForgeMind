@@ -1,6 +1,7 @@
 """API tests for the read-only sensor readings endpoint."""
 
 from datetime import datetime, timezone
+from dataclasses import replace
 from uuid import UUID
 
 import pytest
@@ -41,8 +42,9 @@ def api_client():
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.state.security_settings = replace(app.state.security_settings, api_key="test-only-api-key-not-for-production")
     try:
-        with TestClient(app) as client:
+        with TestClient(app, headers={"Authorization": "Bearer test-only-api-key-not-for-production"}) as client:
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
