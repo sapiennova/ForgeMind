@@ -86,9 +86,9 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
     application = FastAPI(
         title="ForgeMind API",
         version="0.1.0",
-        docs_url="/docs" if security_settings.docs_enabled else None,
-        redoc_url="/redoc" if security_settings.docs_enabled else None,
-        openapi_url="/openapi.json" if security_settings.docs_enabled else None,
+        docs_url="/docs" if security_settings.docs_enabled and not security_settings.production else None,
+        redoc_url="/redoc" if security_settings.docs_enabled and not security_settings.production else None,
+        openapi_url="/openapi.json" if security_settings.docs_enabled and not security_settings.production else None,
         debug=False,
     )
     application.state.security_settings = security_settings
@@ -123,7 +123,7 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
 
     @application.exception_handler(Exception)
     async def unexpected_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception("Unhandled request error")
+        logger.error("Unhandled request error (type=%s)", type(exc).__name__)
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
     return application
