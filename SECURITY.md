@@ -45,9 +45,15 @@ gateway, configure forwarded-header handling only for known proxy addresses, and
 use HTTPS end-to-end where feasible. Do not expose the development server or
 assume CORS makes a public endpoint private. Configure gateway-level connection
 limits, timeouts, request-body limits, concurrency limits, and per-client rate
-limits. A shared rate-limit store (for example Redis) is required for consistent
-limits across multiple workers/replicas; ForgeMind deliberately does not claim an
-in-process limiter is production-safe.
+limits. A starting Nginx example is provided at
+`deploy/nginx/forgemind.conf.example`: it applies 120 requests/minute per source
+IP with a burst of 30 and a 20-connection cap. Tune these values to the sensor
+reporting cadence and expected NAT concentration before production. Nginx shares
+its zone across workers in one gateway instance, not across multiple gateway
+instances. A shared rate-limit store (for example Redis) or a managed gateway
+with global distributed limits is required for consistent enforcement across
+multiple gateway replicas. ForgeMind deliberately does not claim an in-process
+limiter is production-safe.
 
 The application enforces a body-size cap, validates Host headers, disables
 interactive docs/OpenAPI in production, adds defensive response headers, and
