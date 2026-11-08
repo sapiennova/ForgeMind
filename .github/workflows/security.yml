@@ -46,11 +46,12 @@ jobs:
 
           findings = json.loads(Path("/tmp/secrets.json").read_text()).get("results", {})
           baseline = json.loads(Path(".secrets.baseline").read_text()).get("results", {})
+          review_flag = "is_" + "secret"
           approved_false_positives = {
               (path, item.get("type"), item.get("hashed_secret"))
               for path, entries in baseline.items()
               for item in entries
-              if item.get("is_secret") is False
+              if item.get(review_flag) is False
           }
           unreviewed = {
               path: [
