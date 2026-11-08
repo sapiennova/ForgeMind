@@ -1,6 +1,8 @@
 """Tests for the persistent sensor calibration record model."""
 
 import math
+import os
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -332,3 +334,58 @@ def test_database_rejects_non_finite_measurements(field: str, value: float):
             session.rollback()
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("next_due", "should_raise"),
+    (
+        (datetime(2026, 1, 15, 13, tzinfo=timezone.utc), False),
+        (datetime(2026, 1, 15, 11, tzinfo=timezone.utc), True),
+    ),
+    ids=("accepts-later-due-date", "rejects-earlier-due-date"),
+)
+def test_reloaded_sqlite_calibration_compares_naive_dates_as_utc(
+    next_due: datetime,
+    should_raise: bool,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Date validation treats SQLite-loaded naive timestamps as UTC, not local time."""
+    if not hasattr(time, "tzset"):
+        pytest.skip("Changing the process timezone requires time.tzset().")
+
+    original_timezone = os.environ.get("TZ")
+    monkeypatch.setenv("TZ", "Etc/GMT-5")
+    time.tzset()
+
+    engine = _sqlite_engine()
+    try:
+        with Session(engine) as session:
+            sensor = _persist_sensor(session)
+            record = _calibration(sensor.id, calibration_date=_CALIBRATION_DATE)
+            session.add(record)
+            session.commit()
+
+            record_id = record.id
+            session.expunge_all()
+            reloaded = session.get(SensorCalibration, record_id)
+
+            assert reloaded is not None
+            assert reloaded.calibration_date == _CALIBRATION_DATE.replace(tzinfo=None)
+            assert reloaded.calibration_date.tzinfo is None
+
+            if should_raise:
+                with pytest.raises(
+                    ValueError,
+                    match="next_calibration_due cannot be earlier than calibration_date",
+                ):
+                    reloaded.next_calibration_due = next_due
+            else:
+                reloaded.next_calibration_due = next_due
+                assert reloaded.next_calibration_due == next_due
+    finally:
+        engine.dispose()
+        if original_timezone is None:
+            monkeypatch.delenv("TZ", raising=False)
+        else:
+            monkeypatch.setenv("TZ", original_timezone)
+        time.tzset()
