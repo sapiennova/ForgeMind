@@ -1,12 +1,14 @@
 """Security regression tests for the API boundary."""
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import create_app
 from backend.app.security import SecuritySettings, load_security_settings
 
-TEST_KEY = "test-only-key-with-at-least-thirty-two-bytes"
+TEST_KEY = os.environ["FORGEMIND_API_KEY"]
 
 
 def settings(**overrides):
