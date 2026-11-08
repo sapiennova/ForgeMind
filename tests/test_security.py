@@ -1,5 +1,7 @@
 """Security regression tests for the API boundary."""
 
+import asyncio
+import json
 import os
 
 import pytest
@@ -210,20 +212,54 @@ def test_request_body_size_limit_returns_413():
 
 
 def test_streamed_request_body_without_content_length_returns_safe_413():
-    chunks = iter([b"x" * 700, b"internal-stream-marker" + b"y" * 700])
-    with TestClient(create_app(settings()), raise_server_exceptions=False) as client:
-        response = client.post(
-            "/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
-            content=chunks,
-            headers={
-                "Authorization": f"Bearer {TEST_KEY}",
-                "Content-Type": "application/octet-stream",
-            },
-        )
-    assert response.status_code == 413
-    assert response.json() == {"detail": "Request body too large"}
-    assert "internal-stream-marker" not in response.text
-    assert response.headers["x-content-type-options"] == "nosniff"
+    application = create_app(settings())
+    chunks = [
+        {"type": "http.request", "body": b"x" * 700, "more_body": True},
+        {
+            "type": "http.request",
+            "body": b"internal-stream-marker" + b"y" * 700,
+            "more_body": True,
+        },
+    ]
+    sent = []
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
+        "raw_path": b"/api/v1/sensors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/readings",
+        "query_string": b"",
+        "headers": [
+            (b"host", b"testserver"),
+            (b"authorization", f"Bearer {TEST_KEY}".encode()),
+            (b"content-type", b"application/octet-stream"),
+        ],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+
+    async def receive():
+        if chunks:
+            return chunks.pop(0)
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(application(scope, receive, send))
+    response_start = next(message for message in sent if message["type"] == "http.response.start")
+    response_body = b"".join(
+        message.get("body", b"")
+        for message in sent
+        if message["type"] == "http.response.body"
+    )
+    assert response_start["status"] == 413
+    assert json.loads(response_body) == {"detail": "Request body too large"}
+    assert b"internal-stream-marker" not in response_body
+    response_headers = dict(response_start["headers"])
+    assert response_headers[b"x-content-type-options"] == b"nosniff"
 
 
 def test_declared_oversize_request_is_rejected_before_authentication():
