@@ -13,13 +13,41 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.app.routers.machine_telemetry import router as machine_telemetry_router
 from backend.app.routers.sensor_readings import router as sensor_readings_router
-from backend.app.security import SecuritySettings, load_security_settings, require_api_key
+from backend.app.security import SecuritySettings, load_security_settings, require_api_key, validate_api_key
 
 logger = logging.getLogger(__name__)
 
 
 class _RequestTooLarge(Exception):
     pass
+
+
+class APIAuthenticationMiddleware:
+    """Protect every current and future operational route under /api/."""
+
+    def __init__(self, app, settings: SecuritySettings):
+        self.app = app
+        self.settings = settings
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path", "").startswith("/api/"):
+            authorization = next(
+                (value for key, value in scope.get("headers", []) if key.lower() == b"authorization"),
+                None,
+            )
+            token = None
+            if authorization is not None:
+                scheme, separator, credential = authorization.partition(b" ")
+                if separator and scheme.lower() == b"bearer" and credential:
+                    token = credential
+            failure = validate_api_key(self.settings, token)
+            if failure is not None:
+                code, detail = failure
+                headers = {"WWW-Authenticate": "Bearer"} if code == 401 else None
+                response = JSONResponse({"detail": detail}, status_code=code, headers=headers)
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 class RequestSizeLimitMiddleware:
@@ -94,6 +122,7 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
     )
     application.state.security_settings = security_settings
     application.add_middleware(RequestSizeLimitMiddleware, max_bytes=security_settings.max_request_bytes)
+    application.add_middleware(APIAuthenticationMiddleware, settings=security_settings)
     if security_settings.cors_origins:
         application.add_middleware(
             CORSMiddleware,
