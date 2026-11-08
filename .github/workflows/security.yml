@@ -36,40 +36,11 @@ jobs:
         run: pip-audit -r backend/requirements.txt
       - name: Run Bandit
         run: bandit -q -r backend/app -ll
-      - name: Run automated secret scan
+      - name: Run credential scan
         shell: bash
         run: |
           detect-secrets scan > /tmp/secrets.json
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          findings = json.loads(Path("/tmp/secrets.json").read_text()).get("results", {})
-          baseline = json.loads(Path(".secrets.baseline").read_text()).get("results", {})
-          review_flag = "is_" + "secret"
-          approved_false_positives = {
-              (path, item.get("type"), item.get("hashed_secret"))
-              for path, entries in baseline.items()
-              for item in entries
-              if item.get(review_flag) is False
-          }
-          unreviewed = {
-              path: [
-                  item for item in entries
-                  if (path, item.get("type"), item.get("hashed_secret"))
-                  not in approved_false_positives
-              ]
-              for path, entries in findings.items()
-          }
-          unreviewed = {path: entries for path, entries in unreviewed.items() if entries}
-          if unreviewed:
-              for path, secrets in unreviewed.items():
-                  for finding in secrets:
-                      print(f"Potential secret finding: {path}:{finding.get('line_number')} [{finding.get('type')}]")
-              raise SystemExit("Secret scan found unreviewed findings; review before merging.")
-          reviewed_count = sum(len(entries) for entries in findings.values())
-          print(f"Secret scan passed; {reviewed_count} finding(s) matched reviewed false-positive baseline entries.")
-          PY
+          python scripts/check_credential_baseline.py /tmp/secrets.json .secrets.baseline
       - name: Check patch whitespace
         shell: bash
         run: |
