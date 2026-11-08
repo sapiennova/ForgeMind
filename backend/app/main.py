@@ -64,7 +64,7 @@ class RequestSizeLimitMiddleware:
 
         headers = {key.lower(): value for key, value in scope.get("headers", [])}
         content_length = headers.get(b"content-length")
-        if content_length:
+        if content_length is not None:
             try:
                 declared_size = int(content_length)
             except ValueError:
@@ -114,8 +114,6 @@ class SecurityHeadersMiddleware:
                     (b"referrer-policy", b"no-referrer"),
                     (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
                 ])
-                if scope.get("scheme") == "https":
-                    headers.append((b"strict-transport-security", b"max-age=31536000; includeSubDomains"))
                 message["headers"] = headers
             await send(message)
 
