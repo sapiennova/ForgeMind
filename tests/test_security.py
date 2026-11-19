@@ -303,3 +303,11 @@ def test_unexpected_exception_does_not_leak_details():
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal server error"}
     assert "private-internal-error-marker" not in response.text
+    expected_security_headers = {
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "DENY",
+        "referrer-policy": "no-referrer",
+        "permissions-policy": "camera=(), microphone=(), geolocation=()",
+    }
+    for name, value in expected_security_headers.items():
+        assert response.headers[name] == value

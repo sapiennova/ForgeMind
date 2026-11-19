@@ -19,6 +19,14 @@ from backend.app.security import SecuritySettings, load_security_settings, requi
 logger = logging.getLogger(__name__)
 
 
+SECURITY_RESPONSE_HEADERS = (
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"DENY"),
+    (b"referrer-policy", b"no-referrer"),
+    (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+)
+
+
 class APIAuthenticationMiddleware:
     """Protect every current and future operational route under /api/."""
 
@@ -120,12 +128,7 @@ class SecurityHeadersMiddleware:
         async def secured_send(message):
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
-                headers.extend([
-                    (b"x-content-type-options", b"nosniff"),
-                    (b"x-frame-options", b"DENY"),
-                    (b"referrer-policy", b"no-referrer"),
-                    (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
-                ])
+                headers.extend(SECURITY_RESPONSE_HEADERS)
                 message["headers"] = headers
             await send(message)
 
@@ -189,7 +192,10 @@ def create_app(settings: SecuritySettings | None = None) -> FastAPI:
     @application.exception_handler(Exception)
     async def unexpected_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.error("Unhandled request error (type=%s)", type(exc).__name__)
-        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        for name, value in SECURITY_RESPONSE_HEADERS:
+            response.headers[name.decode("latin-1")] = value.decode("latin-1")
+        return response
 
     return application
 
