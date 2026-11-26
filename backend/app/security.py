@@ -42,7 +42,11 @@ class SecuritySettings:
 def load_security_settings(environ: Mapping[str, str] | None = None) -> SecuritySettings:
     """Load explicit settings and fail closed for incomplete production configuration."""
     env = os.environ if environ is None else environ
-    environment = env.get("FORGEMIND_ENV", "development").strip().lower()
+    environment_value = env.get("FORGEMIND_ENV")
+    if environment_value is None or not environment_value.strip():
+        raise RuntimeError("FORGEMIND_ENV must be explicitly set")
+
+    environment = environment_value.strip().lower()
     if environment not in {"development", "test", "production"}:
         raise RuntimeError("FORGEMIND_ENV must be development, test, or production")
 
