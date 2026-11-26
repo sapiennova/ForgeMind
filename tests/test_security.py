@@ -101,6 +101,20 @@ def test_health_is_public_and_minimal():
 @pytest.mark.parametrize(
     "environment",
     [
+        {},
+        {"FORGEMIND_ENV": ""},
+        {"FORGEMIND_ENV": "   "},
+        {"FORGEMIND_ENV": "staging"},
+    ],
+)
+def test_missing_blank_or_invalid_environment_fails_closed(environment):
+    with pytest.raises(RuntimeError, match="FORGEMIND_ENV"):
+        load_security_settings(environment)
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
         {"FORGEMIND_ENV": "production", "FORGEMIND_ALLOWED_HOSTS": "api.example.com"},
         {"FORGEMIND_ENV": "production", "FORGEMIND_API_KEY": "x" * 5, "FORGEMIND_ALLOWED_HOSTS": "api.example.com"},
         {"FORGEMIND_ENV": "production", "FORGEMIND_API_KEY": TEST_KEY},
