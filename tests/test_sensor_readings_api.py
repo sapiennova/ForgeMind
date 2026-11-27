@@ -1,6 +1,8 @@
 """API tests for the read-only sensor readings endpoint."""
 
 from datetime import datetime, timezone
+from dataclasses import replace
+import os
 from uuid import UUID
 
 import pytest
@@ -41,8 +43,10 @@ def api_client():
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
+    test_api_key = os.environ["FORGEMIND_API_KEY"]
+    app.state.security_settings = replace(app.state.security_settings, api_key=test_api_key)
     try:
-        with TestClient(app) as client:
+        with TestClient(app, headers={"Authorization": f"Bearer {test_api_key}"}) as client:
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
@@ -275,12 +279,15 @@ def test_post_sensor_reading_rejects_missing_or_invalid_value(api_client, payloa
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
 def test_post_sensor_reading_rejects_non_finite_values(api_client, value):
     sensor_id = _create_sensor(api_client)
+    # Send raw JSON numeric tokens; HTTPX's json= encoder correctly refuses
+    # non-standard NaN/Infinity values before the request can reach the API.
     response = api_client.post(
         f"/api/v1/sensors/{sensor_id}/readings",
-        json={"value": value},
+        content=f'{{"value": {value}}}',
+        headers={"Content-Type": "application/json"},
     )
     assert response.status_code == 422
 

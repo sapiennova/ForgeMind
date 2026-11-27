@@ -1,6 +1,8 @@
 """Focused API tests for machine telemetry summaries."""
 
 from datetime import datetime, timezone
+from dataclasses import replace
+import os
 from uuid import UUID
 
 import pytest
@@ -38,8 +40,10 @@ def api_client():
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
+    test_api_key = os.environ["FORGEMIND_API_KEY"]
+    app.state.security_settings = replace(app.state.security_settings, api_key=test_api_key)
     try:
-        with TestClient(app) as client:
+        with TestClient(app, headers={"Authorization": f"Bearer {test_api_key}"}) as client:
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)

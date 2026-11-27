@@ -42,9 +42,14 @@ env/
 *~
 .DS_Store
 
-# Application
+# Application secrets and local configuration
 .env
-.env.local
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
 *.log
 
 # Data files

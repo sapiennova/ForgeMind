@@ -17,7 +17,7 @@ The repository currently contains:
 ## Quick Start
 
 ### Prerequisites
-- Python 3.9+
+- Python 3.11+
 - Works in GitHub Codespaces (no local installation required)
 
 ### Backend Setup
@@ -26,13 +26,23 @@ The repository currently contains:
 pip install -r backend/requirements.txt
 
 # Configure the database connection (for future database-backed endpoints)
+# Configure local development security (generate a fresh key; do not commit it)
+export FORGEMIND_ENV=development
+export FORGEMIND_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export FORGEMIND_ALLOWED_HOSTS="localhost,127.0.0.1"
+export FORGEMIND_CORS_ORIGINS=""
+
+# Configure the database connection when using database-backed endpoints
 export DATABASE_URL="postgresql+psycopg2://<user>:<password>@<host>/<database>"
 
-# Run the API
-uvicorn backend.app.main:app --reload
+# Bind to loopback for local development
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 
-# Test the API
+# Liveness check (public and minimal)
 curl http://localhost:8000/health
+
+# Operational endpoints require the Bearer key
+curl -H "Authorization: Bearer $FORGEMIND_API_KEY" http://localhost:8000/api/v1/...
 ```
 
 ### Testing
